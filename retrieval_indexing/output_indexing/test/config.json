@@ -1,0 +1,6 @@
+{
+    "dataset_paths": [
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_subset/trec_trec1"
+    ],
+    "key_name": "inputs_pretokenized"
+}

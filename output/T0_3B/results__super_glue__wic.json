@@ -1,0 +1,82 @@
+[
+    {
+        "dataset_name": "super_glue",
+        "dataset_config_name": "wic",
+        "template_name": "GPT-3-prompt",
+        "evaluation": {
+            "accuracy": 0.5031347962382445
+        }
+    },
+    {
+        "dataset_name": "super_glue",
+        "dataset_config_name": "wic",
+        "template_name": "GPT-3-prompt",
+        "evaluation": {
+            "accuracy": 0.5062695924764891
+        }
+    },
+    {
+        "dataset_name": "super_glue",
+        "dataset_config_name": "wic",
+        "template_name": "GPT-3-prompt",
+        "evaluation": {
+            "accuracy": 0.49843260188087773
+        }
+    },
+    {
+        "dataset_name": "super_glue",
+        "dataset_config_name": "wic",
+        "template_name": "GPT-3-prompt",
+        "evaluation": {
+            "accuracy": 0.49686520376175547
+        }
+    },
+    {
+        "dataset_name": "super_glue",
+        "dataset_config_name": "wic",
+        "template_name": "GPT-3-prompt",
+        "evaluation": {
+            "accuracy": 0.5172413793103449
+        }
+    },
+    {
+        "dataset_name": "super_glue",
+        "dataset_config_name": "wic",
+        "template_name": "GPT-3-prompt",
+        "evaluation": {
+            "accuracy": 0.49843260188087773
+        }
+    },
+    {
+        "dataset_name": "super_glue",
+        "dataset_config_name": "wic",
+        "template_name": "GPT-3-prompt",
+        "evaluation": {
+            "accuracy": 0.5188087774294671
+        }
+    },
+    {
+        "dataset_name": "super_glue",
+        "dataset_config_name": "wic",
+        "template_name": "GPT-3-prompt",
+        "evaluation": {
+            "accuracy": 0.5047021943573667
+        }
+    },
+    {
+        "dataset_name": "super_glue",
+        "dataset_config_name": "wic",
+        "template_name": "GPT-3-prompt",
+        "evaluation": {
+            "accuracy": 0.5
+        }
+    },
+    {
+        "dataset_name": "super_glue",
+        "dataset_config_name": "wic",
+        "template_name": "GPT-3-prompt",
+        "evaluation": {
+            "accuracy": 0.5250783699059561
+        }
+    }
+]

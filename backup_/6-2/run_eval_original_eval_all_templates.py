@@ -71,15 +71,6 @@ def parse_args():
         required=True,
     )
     parser.add_argument(
-        "--prompt_mode",
-        type=str,
-        default=None,
-        help=(
-            "name of the prompt version choose from [original, ic_dpr_full_prompt]",
-            "original: original zero-shot eval from T0; ic_dpr_full_prompt: adding in-context example retrieved from other tasks using dpr"),
-        required=True,
-    )
-    parser.add_argument(
         "--max_length",
         type=int,
         default=1024,
@@ -260,19 +251,12 @@ def main():
         print(f'evaluating all possible templates, total number:{len(template_names)}')
     else:
         template_names = [args.template_name]
-    
-    # main loop over templates
     for template_name in template_names:
         print(f'evaluating tempalte {template_name} ...')
         template = prompts[template_name]
         
         ### preprocess dataset functions ### 
-        if "dpr" in args.prompt_mode:
-            #TODO: make this configurable 
-            pass
-
-        ## original preprocess function ##
-        def preprocess_function_original(examples):
+        def preprocess_function(examples):
             bs = len(examples[column_names[0]])
 
             input_texts = []
@@ -330,17 +314,6 @@ def main():
 
             return features
 
-
-
-        ### select preprocessing function ###
-        if args.prompt_mode == 'original':
-            preprocess_function = preprocess_function_original
-        elif args.prompt_mode == 'ic_dpr_full_prompt':
-            preprocess_function = None
-        else:
-            raise NotImplementedError
-
-        ### preprocess dataset ###
         with accelerator.main_process_first():
             eval_dataset = raw_datasets.map(
                 preprocess_function, batched=True, remove_columns=column_names
@@ -405,16 +378,14 @@ def main():
         results = {
             "dataset_name": args.dataset_name,
             "dataset_config_name": args.dataset_config_name,
-            "template_name": template_name,
+            "template_name": args.template_name,
             "evaluation": eval_metric
         }
         all_results.append(results)
 
     if accelerator.is_main_process:
         if args.output_dir is not None:
-            output_name = f"results__{args.dataset_name}__{args.dataset_config_name}.json"
-            output_name = output_name.replace('/','_')
-            with open(os.path.join(args.output_dir, output_name), "w") as f:
+            with open(os.path.join(args.output_dir, f"results__{args.dataset_name}__{args.dataset_config_name}__{args.model_name_or_path}.json"), "w") as f:
                 json.dump(all_results, f, indent=4)
     
 if __name__ == "__main__":

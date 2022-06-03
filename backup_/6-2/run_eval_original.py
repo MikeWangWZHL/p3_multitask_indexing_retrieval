@@ -43,8 +43,6 @@ from promptsource.templates import DatasetTemplates
 from t0.data_collator import DataCollatorForMultipleChoice
 from t0.model import ModelBase
 
-from template_list import template_list
-
 logger = logging.getLogger(__name__)
 
 
@@ -68,15 +66,6 @@ def parse_args():
         type=str,
         default=None,
         help="The template/prompt name",
-        required=True,
-    )
-    parser.add_argument(
-        "--prompt_mode",
-        type=str,
-        default=None,
-        help=(
-            "name of the prompt version choose from [original, ic_dpr_full_prompt]",
-            "original: original zero-shot eval from T0; ic_dpr_full_prompt: adding in-context example retrieved from other tasks using dpr"),
         required=True,
     )
     parser.add_argument(
@@ -147,13 +136,6 @@ def parse_args():
             "Note that this feature is still experimental in HF Transformers."
         ),
     )
-    parser.add_argument(
-        "--eval_all_templates",
-        action="store_true",
-        help=(
-            "If passed, ignore template name and evaluate all possible templates listed in tempalte_list.py"
-        ),
-    )
     args = parser.parse_args()
 
     return args
@@ -196,6 +178,7 @@ def main():
             raw_datasets = load_dataset(args.dataset_name, split=args.dataset_config_name)
         else:
             raw_datasets = load_dataset(args.dataset_name, args.dataset_config_name, split="validation")
+    #TODO(Victor): enable loading pre-processed dataset from https://huggingface.co/datasets/bigscience/P3
 
     # Trim a number of evaluation examples
     if args.debug:
@@ -245,177 +228,145 @@ def main():
     # First we tokenize all the texts.
     padding = "max_length" if args.pad_to_max_length else False
 
-    
     # Get the prompt to apply and the possible targets.
+    # TODO(Victor): If pulling from pre-processed data, remove this logic.
     prompts = DatasetTemplates(
         f"{args.dataset_name}"
         if args.dataset_config_name is None
         else f"{args.dataset_name}/{args.dataset_config_name}"
     )
+    template = prompts[args.template_name]
 
-    assert (args.dataset_name, args.dataset_config_name) in template_list
-    all_results = []
-    if args.eval_all_templates:
-        template_names = template_list[(args.dataset_name, args.dataset_config_name)]
-        print(f'evaluating all possible templates, total number:{len(template_names)}')
-    else:
-        template_names = [args.template_name]
-    
-    # main loop over templates
-    for template_name in template_names:
-        print(f'evaluating tempalte {template_name} ...')
-        template = prompts[template_name]
-        
-        ### preprocess dataset functions ### 
-        if "dpr" in args.prompt_mode:
-            #TODO: make this configurable 
-            pass
+    def preprocess_function(examples):
+        bs = len(examples[column_names[0]])
 
-        ## original preprocess function ##
-        def preprocess_function_original(examples):
-            bs = len(examples[column_names[0]])
-
-            input_texts = []
-            target_texts = []
-            answer_choices_texts = []
-            for i in range(bs):
-                ex = {
-                    k: examples[k][i]
-                    for k in column_names
-                }
-                input, target = template.apply(ex)
-                ex_answer_choices = template.get_answer_choices_list(ex)
-                assert target in ex_answer_choices
-                input_texts.append(input)
-                target_texts.append(target)
-                answer_choices_texts.append(ex_answer_choices)
-
-            tokenized_inputs = tokenizer(
-                input_texts,
-                padding=padding,
-                max_length=args.max_length,
-                truncation=True,
-                add_special_tokens=False,
-            )
-            tokenized_targets = [
-                tokenizer(
-                    ans_choi,
-                    padding=True,
-                    max_length=args.target_max_length,
-                    truncation=True,
-                )
-                for ans_choi in answer_choices_texts
-            ]
-
-            features = {
-                k: [
-                    [elem for _ in range(len(tokenized_targets[idx]["input_ids"]))]
-                    for idx, elem in enumerate(v)
-                ]
-                for k, v in tokenized_inputs.items()
+        input_texts = []
+        target_texts = []
+        answer_choices_texts = []
+        for i in range(bs):
+            ex = {
+                k: examples[k][i]
+                for k in column_names
             }
+            input, target = template.apply(ex)
+            ex_answer_choices = template.get_answer_choices_list(ex)
+            assert target in ex_answer_choices
+            input_texts.append(input)
+            target_texts.append(target)
+            answer_choices_texts.append(ex_answer_choices)
 
-            features["labels"] = [
-                tokenized_targets[idx]["input_ids"]
-                for idx in range(bs)
-            ]
-            features["labels_attention_mask"] = [
-                tokenized_targets[idx]["attention_mask"]
-                for idx in range(bs)
-            ]
-            features["targets"] = [
-                answer_choices_texts[idx].index(t)
-                for idx, t in enumerate(target_texts)
-            ]
-
-            return features
-
-
-
-        ### select preprocessing function ###
-        if args.prompt_mode == 'original':
-            preprocess_function = preprocess_function_original
-        elif args.prompt_mode == 'ic_dpr_full_prompt':
-            preprocess_function = None
-        else:
-            raise NotImplementedError
-
-        ### preprocess dataset ###
-        with accelerator.main_process_first():
-            eval_dataset = raw_datasets.map(
-                preprocess_function, batched=True, remove_columns=column_names
+        tokenized_inputs = tokenizer(
+            input_texts,
+            padding=padding,
+            max_length=args.max_length,
+            truncation=True,
+            add_special_tokens=False,
+        )
+        tokenized_targets = [
+            tokenizer(
+                ans_choi,
+                padding=True,
+                max_length=args.target_max_length,
+                truncation=True,
             )
+            for ans_choi in answer_choices_texts
+        ]
 
-        # Log a few random samples from the eval set:
-        for index in random.sample(range(len(eval_dataset)), 3):
-            logger.info(f"Sample {index} of the training set: {eval_dataset[index]}.")
-
-        # DataLoaders creation:
-        if args.pad_to_max_length:
-            # If padding was already done ot max length, we use the default data collator that will just convert everything
-            # to tensors.
-            data_collator = default_data_collator
-        else:
-            # Otherwise, `DataCollatorWithPadding` will apply dynamic padding for us (by padding to the maximum length of
-            # the samples passed). When using mixed precision, we add `pad_to_multiple_of=8` to pad all tensors to multiple
-            # of 8s, which will enable the use of Tensor Cores on NVIDIA hardware with compute capability >= 7.5 (Volta).
-            data_collator = DataCollatorForMultipleChoice(
-                tokenizer, pad_to_multiple_of=(8 if accelerator.use_fp16 else None)
-            )
-
-        eval_dataloader = DataLoader(eval_dataset, collate_fn=data_collator, batch_size=args.per_device_eval_batch_size)
-
-
-        # Use the device given by the `accelerator` object.
-        if not args.parallelize:
-            model.to(accelerator.device)
-
-        # Prepare everything with our `accelerator`.
-        eval_dataloader = accelerator.prepare(eval_dataloader)
-
-
-        # Metrics
-        metric = load_metric("accuracy")
-
-        # Eval!
-        total_batch_size = args.per_device_eval_batch_size * accelerator.num_processes
-
-        logger.info("***** Running evaluation *****")
-        logger.info(f"  Num examples = {len(eval_dataset)}")
-        logger.info(f"  Instantaneous batch size per device = {args.per_device_eval_batch_size}")
-        logger.info(f"  Total eval batch size (w. parallel, distributed) = {total_batch_size}")
-        # Only show the progress bar once on each machine.
-        progress_bar = tqdm(range(len(eval_dataloader)), disable=not accelerator.is_local_main_process)
-
-        model.eval()
-        for batch in eval_dataloader:
-            with torch.no_grad():
-                predictions = model(batch)
-
-            metric.add_batch(
-                predictions=accelerator.gather(predictions),
-                references=accelerator.gather(batch["targets"]),
-            )
-
-            progress_bar.update(1)
-
-        eval_metric = metric.compute()
-        accelerator.print(f"Result: {eval_metric}")
-
-        results = {
-            "dataset_name": args.dataset_name,
-            "dataset_config_name": args.dataset_config_name,
-            "template_name": template_name,
-            "evaluation": eval_metric
+        features = {
+            k: [
+                [elem for _ in range(len(tokenized_targets[idx]["input_ids"]))]
+                for idx, elem in enumerate(v)
+            ]
+            for k, v in tokenized_inputs.items()
         }
-        all_results.append(results)
 
+        features["labels"] = [
+            tokenized_targets[idx]["input_ids"]
+            for idx in range(bs)
+        ]
+        features["labels_attention_mask"] = [
+            tokenized_targets[idx]["attention_mask"]
+            for idx in range(bs)
+        ]
+        features["targets"] = [
+            answer_choices_texts[idx].index(t)
+            for idx, t in enumerate(target_texts)
+        ]
+
+        return features
+
+    with accelerator.main_process_first():
+        eval_dataset = raw_datasets.map(
+            preprocess_function, batched=True, remove_columns=column_names
+        )
+
+    # Log a few random samples from the eval set:
+    for index in random.sample(range(len(eval_dataset)), 3):
+        logger.info(f"Sample {index} of the training set: {eval_dataset[index]}.")
+
+    # DataLoaders creation:
+    if args.pad_to_max_length:
+        # If padding was already done ot max length, we use the default data collator that will just convert everything
+        # to tensors.
+        data_collator = default_data_collator
+    else:
+        # Otherwise, `DataCollatorWithPadding` will apply dynamic padding for us (by padding to the maximum length of
+        # the samples passed). When using mixed precision, we add `pad_to_multiple_of=8` to pad all tensors to multiple
+        # of 8s, which will enable the use of Tensor Cores on NVIDIA hardware with compute capability >= 7.5 (Volta).
+        data_collator = DataCollatorForMultipleChoice(
+            tokenizer, pad_to_multiple_of=(8 if accelerator.use_fp16 else None)
+        )
+
+    eval_dataloader = DataLoader(eval_dataset, collate_fn=data_collator, batch_size=args.per_device_eval_batch_size)
+
+
+    # Use the device given by the `accelerator` object.
+    if not args.parallelize:
+        model.to(accelerator.device)
+
+    # Prepare everything with our `accelerator`.
+    eval_dataloader = accelerator.prepare(eval_dataloader)
+
+
+    # Metrics
+    metric = load_metric("accuracy")
+
+    # Eval!
+    total_batch_size = args.per_device_eval_batch_size * accelerator.num_processes
+
+    logger.info("***** Running evaluation *****")
+    logger.info(f"  Num examples = {len(eval_dataset)}")
+    logger.info(f"  Instantaneous batch size per device = {args.per_device_eval_batch_size}")
+    logger.info(f"  Total eval batch size (w. parallel, distributed) = {total_batch_size}")
+    # Only show the progress bar once on each machine.
+    progress_bar = tqdm(range(len(eval_dataloader)), disable=not accelerator.is_local_main_process)
+
+    model.eval()
+    for batch in eval_dataloader:
+        with torch.no_grad():
+            predictions = model(batch)
+
+        metric.add_batch(
+            predictions=accelerator.gather(predictions),
+            references=accelerator.gather(batch["targets"]),
+        )
+
+        progress_bar.update(1)
+
+    eval_metric = metric.compute()
+    accelerator.print(f"Result: {eval_metric}")
+
+    results = {
+        "dataset_name": args.dataset_name,
+        "dataset_config_name": args.dataset_config_name,
+        "template_name": args.template_name,
+        "evaluation": eval_metric
+    }
     if accelerator.is_main_process:
         if args.output_dir is not None:
-            output_name = f"results__{args.dataset_name}__{args.dataset_config_name}.json"
-            output_name = output_name.replace('/','_')
-            with open(os.path.join(args.output_dir, output_name), "w") as f:
-                json.dump(all_results, f, indent=4)
-    
+            with open(os.path.join(args.output_dir, "results.json"), "w") as f:
+                json.dump(results, f, indent=4)
+
+
 if __name__ == "__main__":
     main()
