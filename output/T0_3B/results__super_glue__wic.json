@@ -2,7 +2,7 @@
     {
         "dataset_name": "super_glue",
         "dataset_config_name": "wic",
-        "template_name": "GPT-3-prompt",
+        "template_name": "question-context-meaning-with-label",
         "evaluation": {
             "accuracy": 0.5031347962382445
         }
@@ -10,7 +10,7 @@
     {
         "dataset_name": "super_glue",
         "dataset_config_name": "wic",
-        "template_name": "GPT-3-prompt",
+        "template_name": "question-context-meaning",
         "evaluation": {
             "accuracy": 0.5062695924764891
         }
@@ -18,7 +18,7 @@
     {
         "dataset_name": "super_glue",
         "dataset_config_name": "wic",
-        "template_name": "GPT-3-prompt",
+        "template_name": "grammar_homework",
         "evaluation": {
             "accuracy": 0.49843260188087773
         }
@@ -26,7 +26,7 @@
     {
         "dataset_name": "super_glue",
         "dataset_config_name": "wic",
-        "template_name": "GPT-3-prompt",
+        "template_name": "affirmation_true_or_false",
         "evaluation": {
             "accuracy": 0.49686520376175547
         }
@@ -42,7 +42,7 @@
     {
         "dataset_name": "super_glue",
         "dataset_config_name": "wic",
-        "template_name": "GPT-3-prompt",
+        "template_name": "same_sense",
         "evaluation": {
             "accuracy": 0.49843260188087773
         }
@@ -50,7 +50,7 @@
     {
         "dataset_name": "super_glue",
         "dataset_config_name": "wic",
-        "template_name": "GPT-3-prompt",
+        "template_name": "question-context",
         "evaluation": {
             "accuracy": 0.5188087774294671
         }
@@ -58,7 +58,7 @@
     {
         "dataset_name": "super_glue",
         "dataset_config_name": "wic",
-        "template_name": "GPT-3-prompt",
+        "template_name": "GPT-3-prompt-with-label",
         "evaluation": {
             "accuracy": 0.5047021943573667
         }
@@ -66,7 +66,7 @@
     {
         "dataset_name": "super_glue",
         "dataset_config_name": "wic",
-        "template_name": "GPT-3-prompt",
+        "template_name": "polysemous",
         "evaluation": {
             "accuracy": 0.5
         }
@@ -74,7 +74,7 @@
     {
         "dataset_name": "super_glue",
         "dataset_config_name": "wic",
-        "template_name": "GPT-3-prompt",
+        "template_name": "similar-sense",
         "evaluation": {
             "accuracy": 0.5250783699059561
         }

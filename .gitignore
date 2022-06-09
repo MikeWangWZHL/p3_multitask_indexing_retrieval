@@ -131,3 +131,7 @@ dmypy.json
 
 ### custom ###
 *.faiss
+evaluation/retrieved_*
+output/*
+retrieval_indexing/indexed_datasets
+retrieval_indexing/output_indexing

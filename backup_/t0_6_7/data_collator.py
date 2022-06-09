@@ -63,7 +63,7 @@ class DataCollatorForMultipleChoice:
                 {
                     k: v[i]
                     for k, v in feature.items()
-                    if k not in ["targets","indices"]
+                    if k != "targets"
                 }
                 for i in range(num_choices)
             ]

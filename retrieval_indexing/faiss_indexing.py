@@ -9,9 +9,8 @@ import os
 from glob import glob
 import json
 
-def set_up_device():
+def set_up_device(gpu_index):
     # single gpu
-    gpu_index = 1
     if torch.cuda.is_available():
         dev = f"cuda:{gpu_index}"
     else:
@@ -30,12 +29,57 @@ def load_multitask_datasets(dataset_disk_paths):
         else:
             print(f'INFO: no train split found, using entire dataset: {p}')
             loaded_dataset_train_split = loaded_dataset
+        
+        # ### add dataset name ###
+        # def add_dataset_name_column(example):
+        #     example['dataset_name'] = os.path.basename(p)
+        #     return example
+        # loaded_dataset_train_split = loaded_dataset_train_split.map(add_dataset_name_column)
 
         datasets.append(loaded_dataset_train_split)
     concatenated = concatenate_datasets(datasets)
     print("concatenated dataset:", concatenated)
-    # quit()
     return concatenated
+
+def load_multitask_datasets_with_idx(picked_datasets_names, dataset_disk_root, task_2_templates = None):
+    datasets = []
+    dataset_disk_paths = []
+    print('loading datasets train split ...')
+    for dataset_name in tqdm(picked_datasets_names):
+        for p in glob(os.path.join(dataset_disk_root,f"{dataset_name}*")):
+            
+            if task_2_templates is not None:
+                assert dataset_name in task_2_templates
+                if 'original_dataset_name' not in task_2_templates[dataset_name]:
+                    print('!!! skip non-original:', dataset_name, os.path.basename(p))
+                    continue
+                if os.path.basename(p) not in task_2_templates[dataset_name]['original_dataset_name']:
+                    print('!!! skip non-original:', dataset_name, os.path.basename(p))
+                    continue
+            
+            dataset_disk_paths.append(p)
+            loaded_dataset = load_from_disk(p)
+            # template_name = os.path.basename(p).replace(dataset_name,'')
+            template_name = os.path.basename(p).lstrip(dataset_name)
+            if "train" in loaded_dataset:
+                loaded_dataset_train_split = loaded_dataset['train']
+            else:
+                print(f'INFO: no train split found, using entire dataset: {p}')
+                loaded_dataset_train_split = loaded_dataset
+            
+            ### add dataset name ###
+            def add_instance_info_column(example, idx):
+                example['dataset_name'] = dataset_name
+                example['template_name'] = template_name
+                example['idx'] = idx
+                return example
+            loaded_dataset_train_split = loaded_dataset_train_split.map(add_instance_info_column, with_indices=True)
+            datasets.append(loaded_dataset_train_split)
+            # break
+        # break
+    concatenated = concatenate_datasets(datasets)
+    print("concatenated dataset:", concatenated)
+    return concatenated, dataset_disk_paths
 
 
 @torch.no_grad()
@@ -45,7 +89,10 @@ def indexing(
         key_name,
         if_batched = False,
         num_proc = 1,
-        dataset_disk_root = "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_subset"
+        dataset_disk_root = "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_subset",
+        saved_dataset_root = "/cephfs/user/mikeeewang/summer_22/code/t-zero/retrieval_indexing/indexed_datasets",
+        device_index = 1,
+        task_2_templates = json.load(open("/cephfs/user/mikeeewang/summer_22/workspace/data/bigscience_P3_task_2_templates.json"))
         # dataset_disk_root = "/cephfs/user/jianyiyang/workspace/data/bigscience_P3"
     ):
     
@@ -54,7 +101,7 @@ def indexing(
         os.makedirs(output_dir)
     
     ### set up device
-    gpu_index, device = set_up_device()
+    gpu_index, device = set_up_device(device_index)
 
     ### load model
     ctx_encoder = DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
@@ -63,10 +110,15 @@ def indexing(
 
     ### load dataset
     print('picked datasets number:', len(picked_datasets_names))
-    dataset_disk_paths = []
-    for d in picked_datasets_names:
-        dataset_disk_paths += glob(os.path.join(dataset_disk_root,f"{d}*"))
-    ds = load_multitask_datasets(dataset_disk_paths)
+    # dataset_disk_paths = []
+    # for d in picked_datasets_names:
+    #     dataset_disk_paths += glob(os.path.join(dataset_disk_root,f"{d}*"))
+    # ds = load_multitask_datasets(dataset_disk_paths)
+
+    ds, dataset_disk_paths = load_multitask_datasets_with_idx(picked_datasets_names, dataset_disk_root, task_2_templates) 
+    shard_path = os.path.join(saved_dataset_root, os.path.basename(output_dir))
+    ds.save_to_disk(shard_path)
+    print('saved to disk')
 
     ### generate embeddings
     start = time.time()
@@ -104,7 +156,7 @@ def indexing(
     #####################
 
     print('adding index...')
-    # ds_with_embeddings.add_faiss_index(column='embeddings', device=gpu_index)
+    # ds_with_embeddings.add_faiss_index(column='embeddings', device=-1)
     ds_with_embeddings.add_faiss_index(column='embeddings')
 
     saving_index_path = os.path.join(output_dir, "index.faiss")
@@ -128,10 +180,11 @@ def indexing(
 def search(
         question, 
         saved_index_dir,
-        topk=3
+        topk=3,
+        device_index = 1
     ):
     ### set up device
-    gpu_index, device = set_up_device()
+    gpu_index, device = set_up_device(device_index)
     
     # load dataset and index
     index_path = os.path.join(saved_index_dir,'index.faiss')
@@ -141,6 +194,7 @@ def search(
     key_name, dataset_paths = config['key_name'], config['dataset_paths']
     ds_with_embeddings = load_multitask_datasets(dataset_paths)
     ds_with_embeddings.load_faiss_index('embeddings', index_path)
+    # ds_with_embeddings.load_faiss_index('embeddings', index_path, device=-1)
 
     # for idx, item in enumerate(ds_with_embeddings[:5]['text']):
     #     with open(os.path.join('./dummy_text_folder',f'{idx}.txt'), 'w') as out:
@@ -160,46 +214,91 @@ def search(
 
 
 if __name__ == "__main__":
-    # ### multi-processing
-    # from torch.multiprocessing import Pool, Process, set_start_method
-    # try:
-    #     set_start_method('spawn',force=True)
-    # except RuntimeError:
-    #     pass
-
     # ### do indexing ###
 
-    output_dir = '/cephfs/user/mikeeewang/summer_22/code/multitask_prompting/output_indexing/subset_6_1'
+    # output_dir = './output_indexing/subset_6_1'
+    # picked_datasets_names = [
+    #     "cos_e_v1.11", # multi-choice: commonsense QA
+    #     "cosmos_qa", # multi-choice: commonsense-based reading comprehension
+    #     "dream", # multi-choice: dialogue based reading comprehension
+    #     "qasc", # multi-choice: QA via sentence composition
+    #     "adversarial_qa_dbert", # extractive QA: reading comprehension
+    #     "adversarial_qa_dbidaf", # extractive QA: reading comprehension
+    #     "imdb", # sentiment: movie review
+    #     "rotten_tomatoes", # sentiment: movie review
+    #     "ag_news", # topic classification
+    #     "trec", # topic classification  
+    # ]
+
+    # output_dir = './output_indexing/p3_subset_6_3-part-1'
+    # picked_datasets_names = [
+    #     "glue_mrpc", # paraphrase identification
+    #     "glue_qqp", # paraphrase identification
+    #     "quail",
+    #     "quarel",
+    #     "quartz",
+    #     "sciq",
+    #     "social_i_qa",
+    #     "wiki_hop",
+    #     "wiki_qa",
+    #     "dbpedia_14"
+    # ]
+
+
+    # ## subset 3
+    # output_dir = './output_indexing/p3_subset_6_3-part-2'
+    # picked_datasets_names = [
+    #     "kilt_tasks",
+    #     "adversarial_qa",
+    #     "duorc",
+    #     "ropes",
+    #     "quoref",
+    #     "tydiqa"
+    # ]
+
+    # ## unit test
+    # output_dir = './output_indexing/test'
+    # picked_datasets_names = [
+    #     "trec_trec1", # extractive QA: reading comprehension
+    # ]
+
+    ## subset 4
+    output_dir = './output_indexing/p3_subset_6_6_multichoice_qa_new_original_only'
+    # multi-choice qa training set in t-zero
     picked_datasets_names = [
         "cos_e_v1.11", # multi-choice: commonsense QA
         "cosmos_qa", # multi-choice: commonsense-based reading comprehension
         "dream", # multi-choice: dialogue based reading comprehension
         "qasc", # multi-choice: QA via sentence composition
-        "adversarial_qa_dbert", # extractive QA: reading comprehension
-        "adversarial_qa_dbidaf", # extractive QA: reading comprehension
-        "imdb", # sentiment: movie review
-        "rotten_tomatoes", # sentiment: movie review
-        "ag_news", # topic classification
-        "trec", # topic classification  
-        # "adversarial_qa_droberta", # extractive QA: reading comprehension
-        # "glue_mrpc", # paraphrase identification
-        # "glue_qqp", # paraphrase identification
+        "quail", 
+        "quarel",
+        "quartz", 
+        "sciq", 
+        "social_i_qa",
+        "wiki_hop_original",
+        "wiki_qa"
     ]
-    # picked_datasets_names = [
-    #     "trec_trec1"
-    # ]
+
+    ### if not None, use original tasks only:
+    task_2_templates = None
+    # task_2_templates = json.load(open("/cephfs/user/mikeeewang/summer_22/workspace/data/bigscience_P3_task_2_templates.json"))
+
+    device_index = 7
     key_name = "inputs_pretokenized"
     
-    indexing(        
+    indexing(
         picked_datasets_names,
         output_dir, 
         key_name,
         if_batched = False,
-        num_proc = None
+        num_proc = None,
+        device_index = device_index,
+        task_2_templates = task_2_templates
     )
 
     ### do search ###
     search(
         question="happy birthday", 
-        saved_index_dir = '/cephfs/user/mikeeewang/summer_22/code/multitask_prompting/output_indexing/test',
+        saved_index_dir = './output_indexing/p3_subset_6_6_multichoice_qa_new',
+        device_index = device_index 
     )
