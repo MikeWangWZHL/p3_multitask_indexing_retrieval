@@ -60,7 +60,7 @@ def load_multitask_datasets_with_idx(picked_datasets_names, dataset_disk_root, t
             dataset_disk_paths.append(p)
             loaded_dataset = load_from_disk(p)
             # template_name = os.path.basename(p).replace(dataset_name,'')
-            template_name = os.path.basename(p).lstrip(dataset_name)
+            template_name = os.path.basename(p).removeprefix(dataset_name)
             if "train" in loaded_dataset:
                 loaded_dataset_train_split = loaded_dataset['train']
             else:
@@ -256,20 +256,14 @@ if __name__ == "__main__":
     #     "tydiqa"
     # ]
 
-    # ## unit test
-    # output_dir = './output_indexing/test'
-    # picked_datasets_names = [
-    #     "trec_trec1", # extractive QA: reading comprehension
-    # ]
-
     ## subset 4
-    output_dir = './output_indexing/p3_subset_6_6_multichoice_qa_new_original_only'
+    output_dir = './output_indexing/p3_subset_6_6_multichoice_qa_new_tmp'
     # multi-choice qa training set in t-zero
     picked_datasets_names = [
-        "cos_e_v1.11", # multi-choice: commonsense QA
-        "cosmos_qa", # multi-choice: commonsense-based reading comprehension
-        "dream", # multi-choice: dialogue based reading comprehension
-        "qasc", # multi-choice: QA via sentence composition
+        "cos_e_v1.11", 
+        "cosmos_qa", 
+        "dream", 
+        "qasc", 
         "quail", 
         "quarel",
         "quartz", 
@@ -299,6 +293,6 @@ if __name__ == "__main__":
     ### do search ###
     search(
         question="happy birthday", 
-        saved_index_dir = './output_indexing/p3_subset_6_6_multichoice_qa_new',
+        saved_index_dir = output_dir,
         device_index = device_index 
     )

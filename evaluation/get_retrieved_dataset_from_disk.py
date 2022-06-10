@@ -64,9 +64,9 @@ REMAP_NAMES = {
 def main():
 
     ### input config ###
-    input_dir = "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_subset"
-    intermeidate_dir = "/cephfs/user/mikeeewang/summer_22/code/t-zero/evaluation/retrieved_dataset_train_validation/p3_subset_6_6_multichoice_qa_new"
-    shard_names = ['p3_subset_6_6_multichoice_qa_new']
+    input_dir = "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_subset" # directory storing local dataset on disk
+    intermeidate_dir = "/cephfs/user/mikeeewang/summer_22/code/t-zero/evaluation/retrieved_dataset_train_validation/p3_subset_6_6_multichoice_qa_new" # storing dataset with retrieved examples
+    shard_names = ['p3_subset_6_6_multichoice_qa_new'] # retrieval_index names
 
     args = parse_args()
     dataset_name = args.dataset_name
