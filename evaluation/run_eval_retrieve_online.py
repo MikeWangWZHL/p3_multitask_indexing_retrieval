@@ -71,7 +71,7 @@ def parse_args():
         type=str,
         default=None,
         help="The template/prompt name",
-        required=True,
+        # required=True,
     )
     parser.add_argument(
         "--prompt_mode",
@@ -191,6 +191,9 @@ def main():
         os.makedirs(args.output_dir, exist_ok=True)
     accelerator.wait_for_everyone()
 
+
+    if args.dataset_config_name in ['None','','none']:
+        args.dataset_config_name = None
     # In distributed evaluation, the load_dataset function guarantee that only one local process can concurrently
     # download the dataset.
     if args.dataset_name is not None:
@@ -249,7 +252,6 @@ def main():
     # First we tokenize all the texts.
     padding = "max_length" if args.pad_to_max_length else False
 
-    
     # Get the prompt to apply and the possible targets.
     prompts = DatasetTemplates(
         f"{args.dataset_name}"
@@ -264,7 +266,7 @@ def main():
         print(f'evaluating all possible templates, total number:{len(template_names)}')
     else:
         template_names = [args.template_name]
-    
+
     ### set up retriever ###
     if "dpr" in args.prompt_mode:
         #TODO: make this configurable 

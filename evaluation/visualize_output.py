@@ -36,7 +36,7 @@ if __name__ == "__main__":
             line = f"{item['template_name']}\t{item['evaluation']['accuracy']}"
         lines.append(line)
         print(line)
-    
+
     with open(output_path, 'w') as out:
         for line in lines:
             out.write(line)

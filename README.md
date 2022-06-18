@@ -20,6 +20,15 @@ echo "done dream"
 ```
 - the resulting dataset will be ready for running MoE finetuning
 
+### [UPDATE Jun 12] Run retrieval and preprocess evaluation tasks only on examples
+(1) Run `evaluation/get_retrieved_dataset_from_disk.py` to process training set tasks with augmentation examples attached, for example at `t-zero/` run: `bash scripts/process_multiple_training_split.sh`
+(2) Start fine-tuning using scripts such as `/MultitaskGenerativeMoE/training/run_mixture_k-1.sh`
+(3) Keep a note on the config of the fine-tuning arguments, especially `DATASET_DIR_NAMES` and `N`
+(4) Use the same `DATASET_DIR_NAMES` and `N` and output_name to set up `t-zero/retrieval_indexing/faiss_indexing_chosen_examples.py`, run `faiss_indexing_chosen_examples.py` to get the indexing of the training augmentation examples
+(5) Run `evaluation/get_retrieved_dataset_from_disk_for_eval_seen_in_training_only.py` to retrieve and process evaulation tasks, for example at `t-zero/` run: `bash scripts/process_multiple_evaluation_split_seen_in_training_only.sh`
+
+
+
 ### Run retrieval from Huggingface Dataset
 - set up `dataset_name` and `dataset_config_name` and `SHARD_NAMES` (retrieval_index name in `/cephfs/user/mikeeewang/summer_22/code/t-zero/retrieval_indexing/output_indexing`) in `scripts/retrieve_from_hf.sh` then run `bash scripts/retrieve_from_hf.sh`; default output will be at `t-zero/evaluation/retrieved_dataset_train_validation`
 

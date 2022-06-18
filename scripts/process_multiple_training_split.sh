@@ -1,4 +1,10 @@
-K=1
+K=$1
+
+python evaluation/get_retrieved_dataset_from_disk.py \
+    --dataset_name sciq \
+    --dataset_config_name None \
+    --k $K
+echo "done sciq"
 
 python evaluation/get_retrieved_dataset_from_disk.py \
     --dataset_name dream \
@@ -25,25 +31,29 @@ python evaluation/get_retrieved_dataset_from_disk.py \
 echo "done qasc"
 
 python evaluation/get_retrieved_dataset_from_disk.py \
-    --dataset_name quail \
-    --dataset_config_name None \
-    --k $K
-echo "done quail"
-
-python evaluation/get_retrieved_dataset_from_disk.py \
     --dataset_name quartz \
     --dataset_config_name None \
     --k $K
 echo "done quartz"
 
 python evaluation/get_retrieved_dataset_from_disk.py \
-    --dataset_name sciq \
-    --dataset_config_name None \
-    --k $K
-echo "done sciq"
-
-python evaluation/get_retrieved_dataset_from_disk.py \
     --dataset_name social_i_qa \
     --dataset_config_name None \
     --k $K
 echo "done social_i_qa"
+
+python evaluation/get_retrieved_dataset_from_disk.py \
+    --dataset_name wiqa \
+    --dataset_config_name None \
+    --k $K
+echo "done wiqa"
+
+
+
+
+
+# python evaluation/get_retrieved_dataset_from_disk.py \
+#     --dataset_name quail \
+#     --dataset_config_name None \
+#     --k $K
+# echo "done quail"

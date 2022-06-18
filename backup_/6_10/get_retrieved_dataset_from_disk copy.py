@@ -61,13 +61,6 @@ def parse_args():
         help="demonstration number",
         required=True,
     )
-    parser.add_argument(
-        "--max_length",
-        type=int,
-        default=1024,
-        help="max_length",
-        required=False,
-    )
     args = parser.parse_args()
     return args
 
@@ -75,7 +68,7 @@ def parse_args():
 
 
 
-
+MAX_LENGTH = 1024
 N_EXCEED_MAX_LENGTH = 0
 # N_NOT_ENOUGH_DEMO = 0
 # N_DISCARD_NOT_ORIGINAL = 0
@@ -94,10 +87,6 @@ def main():
     shard_names = ['p3_subset_6_6_multichoice_qa_new'] # retrieval_index names
 
     args = parse_args()
-
-    MAX_LENGTH = args.max_length
-    print('MAX_LENGTH:', MAX_LENGTH)
-
     dataset_name = args.dataset_name
     dataset_config_name = args.dataset_config_name
     EXAMPLE_NUM = args.k # concat how many examples
@@ -106,7 +95,7 @@ def main():
         dataset_config_name = None
 
     ### output config ###
-    output_dir = '/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/with_retrieval_add-special-token_false__store_chosen_example'
+    output_dir = '/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/with_retrieval_add-special-token_false'
     if dataset_config_name:
         output_name = f'{dataset_name}__{dataset_config_name}__{os.path.basename(input_dir)}__k-{EXAMPLE_NUM}'
         task_full_name = f'{dataset_name}_{dataset_config_name}'
@@ -160,21 +149,18 @@ def main():
     set_seed(42)
     tokenizer = AutoTokenizer.from_pretrained('bigscience/T0')
 
-    def process(examples, idx):
+    def process(examples):
 
         if EXAMPLE_NUM == 0:
             bs = len(examples['retrieved_examples'])
-            chosen_examples = []
             new_inputs_pretokenized = []
             for i in range(bs):
                 new_inputs_pretokenized.append(examples['inputs_pretokenized'][i])
-                chosen_examples.append([])
         else:
             global N_EXCEED_MAX_LENGTH
             bs = len(examples['retrieved_examples'])
             # print('batch size:', bs)
             new_inputs_pretokenized = []
-            chosen_examples = []
             for i in range(bs):
                 ### select retrieved examples as demonstration ###
                 scores, retrieved_examples = examples["scores"][i], examples['retrieved_examples'][i]
@@ -197,7 +183,6 @@ def main():
                 assert EXAMPLE_NUM <= len(cands)
                 ex_i = 0
                 chosen_key_set = set()
-                chosen_examples_per_instance = []
                 while len(demonstration_pretokenized) < EXAMPLE_NUM and ex_i < len(cands):
                     cand = cands[ex_i]
                     ### check if (dataset_name, idx) is not been chosen
@@ -214,21 +199,10 @@ def main():
                         #             is_original = False
                         #             break
                         if is_original:
-                            if task_full_name==cand[3] and cand[5]==idx[i]:
-                                logger.info('skip identical instance!')
-                            else:
+                            if cand[1] != original_inputs_pretokenized:
                                 demonstration_pretokenized.append(cand[1].rstrip("\n") + "\n" + cand[2].lstrip("\n"))
-                                # store the chosen example
-                                chosen_examples_per_instance.append(
-                                    {
-                                        "score":cand[0],
-                                        "inputs_pretokenized":cand[1],
-                                        "targets_pretokenized":cand[2],
-                                        "dataset_name":cand[3],
-                                        "template_name":cand[4],
-                                        "idx":cand[5]
-                                    }
-                                )
+                            else:
+                                logger.info('skip identical instance!')
                     ex_i += 1
 
                 if len(demonstration_pretokenized) < EXAMPLE_NUM:
@@ -240,7 +214,6 @@ def main():
                                         + original_inputs_pretokenized
                 # print(new_input_pretokenized)
                 new_inputs_pretokenized.append(new_input_pretokenized)
-                chosen_examples.append(chosen_examples_per_instance)
 
         ### truncate from the end ###
         # new_inputs = tokenizer(
@@ -263,8 +236,6 @@ def main():
 
         examples['inputs'] = new_input_ids
         examples['inputs_pretokenized'] = new_inputs_pretokenized
-        # store the chosen examples
-        examples['chosen_examples'] = chosen_examples
 
         for i in examples['inputs']:
             if len(i) == MAX_LENGTH:
@@ -280,7 +251,6 @@ def main():
             process,
             batched=True,
             num_proc=8,
-            with_indices=True
             # remove_columns=column_names
         )
         for index in random.sample(range(len(new_dataset['train'])), 3):

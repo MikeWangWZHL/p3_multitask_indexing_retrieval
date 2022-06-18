@@ -2,7 +2,7 @@ import os
 import random
 import logging
 
-from datasets import load_from_disk
+from datasets import DatasetDict, load_from_disk
 from transformers import (
     set_seed,
     AutoTokenizer
@@ -41,6 +41,13 @@ def encode_right_truncated(tokenizer, texts, padding=False, max_length=1024, add
 def parse_args():
     parser = argparse.ArgumentParser(description="visualize output with all templates result json")
     parser.add_argument(
+        "--shard_name",
+        type=str,
+        default=None,
+        help="name for the indexing of the examples used in training",
+        required=True,
+    )
+    parser.add_argument(
         "--dataset_name",
         type=str,
         default=None,
@@ -61,13 +68,6 @@ def parse_args():
         help="demonstration number",
         required=True,
     )
-    parser.add_argument(
-        "--max_length",
-        type=int,
-        default=1024,
-        help="max_length",
-        required=False,
-    )
     args = parser.parse_args()
     return args
 
@@ -75,7 +75,7 @@ def parse_args():
 
 
 
-
+MAX_LENGTH = 1024
 N_EXCEED_MAX_LENGTH = 0
 # N_NOT_ENOUGH_DEMO = 0
 # N_DISCARD_NOT_ORIGINAL = 0
@@ -87,16 +87,12 @@ REMAP_NAMES = {
 
 
 def main():
+    args = parse_args()
 
     ### input config ###
     input_dir = "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_subset" # directory storing local dataset on disk
-    intermeidate_dir = "/cephfs/user/mikeeewang/summer_22/code/t-zero/evaluation/retrieved_dataset_train_validation/p3_subset_6_6_multichoice_qa_new" # storing dataset with retrieved examples
-    shard_names = ['p3_subset_6_6_multichoice_qa_new'] # retrieval_index names
-
-    args = parse_args()
-
-    MAX_LENGTH = args.max_length
-    print('MAX_LENGTH:', MAX_LENGTH)
+    shard_names = [args.shard_name] # one only
+    intermeidate_dir = f"/cephfs/user/mikeeewang/summer_22/code/t-zero/evaluation/retrieved_dataset_train_validation/{args.shard_name}" # storing dataset with retrieved examples
 
     dataset_name = args.dataset_name
     dataset_config_name = args.dataset_config_name
@@ -164,11 +160,9 @@ def main():
 
         if EXAMPLE_NUM == 0:
             bs = len(examples['retrieved_examples'])
-            chosen_examples = []
             new_inputs_pretokenized = []
             for i in range(bs):
                 new_inputs_pretokenized.append(examples['inputs_pretokenized'][i])
-                chosen_examples.append([])
         else:
             global N_EXCEED_MAX_LENGTH
             bs = len(examples['retrieved_examples'])

@@ -1,0 +1,8 @@
+{
+    "templates": {
+        "A": "aaa",
+        "B": "bbb",
+        "C": "ccc"
+    },
+    "key_name": "template_str"
+}
