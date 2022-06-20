@@ -37,6 +37,18 @@ def encode_right_truncated(tokenizer, texts, padding=False, max_length=1024, add
         ret_ids.append(ids)
     return ret_ids
 
+def encode_right_truncated_single(tokenizer, text, padding=False, max_length=1024, add_special_tokens=False):
+    tokenized = tokenizer.tokenize(text, padding=padding, add_special_tokens=add_special_tokens)
+
+    if not add_special_tokens:
+        truncated = tokenized[-max_length:]
+    else:
+        truncated = tokenized[0:1] + tokenized[-(max_length-1):]
+
+    ids = tokenizer.convert_tokens_to_ids(truncated)
+    assert len(ids) <= max_length
+    return ids
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="visualize output with all templates result json")
@@ -68,11 +80,30 @@ def parse_args():
         help="max_length",
         required=False,
     )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        required=True,
+    )
+    parser.add_argument(
+        "--intermediate_dir",
+        type=str,
+        required=True,
+    )
+    parser.add_argument(
+        "--shard_names",
+        type=str,
+        nargs='+',
+        help="list of database names to use"
+    )
+    parser.add_argument(
+        "--input_dir",
+        type=str,
+        required=False,
+        default="/cephfs/user/mikeeewang/summer_22/workspace/data/p3_subset"
+    )
     args = parser.parse_args()
     return args
-
-
-
 
 
 
@@ -87,13 +118,17 @@ REMAP_NAMES = {
 
 
 def main():
+    args = parse_args()
 
     ### input config ###
-    input_dir = "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_subset" # directory storing local dataset on disk
-    intermeidate_dir = "/cephfs/user/mikeeewang/summer_22/code/t-zero/evaluation/retrieved_dataset_train_validation/p3_subset_6_6_multichoice_qa_new" # storing dataset with retrieved examples
-    shard_names = ['p3_subset_6_6_multichoice_qa_new'] # retrieval_index names
+    input_dir = args.input_dir # directory storing local dataset on disk
+    intermediate_dir = args.intermediate_dir# storing dataset with retrieved examples
+    shard_names = args.shard_names # retrieval_index names
 
-    args = parse_args()
+    print("input_dir:",input_dir)
+    print("intermediate_dir:",intermediate_dir)
+    print("shard_names:",shard_names)
+
 
     MAX_LENGTH = args.max_length
     print('MAX_LENGTH:', MAX_LENGTH)
@@ -106,7 +141,8 @@ def main():
         dataset_config_name = None
 
     ### output config ###
-    output_dir = '/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/with_retrieval_add-special-token_false__store_chosen_example'
+    output_dir = args.output_dir
+    # output_dir = '/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/with_retrieval_add-special-token_false__store_chosen_example'
     if dataset_config_name:
         output_name = f'{dataset_name}__{dataset_config_name}__{os.path.basename(input_dir)}__k-{EXAMPLE_NUM}'
         task_full_name = f'{dataset_name}_{dataset_config_name}'
@@ -142,13 +178,13 @@ def main():
             continue
 
         loaded_dataset = load_from_disk(p)
-        output_path = os.path.join(intermeidate_dir, os.path.basename(p))
+        output_path = os.path.join(intermediate_dir, os.path.basename(p))
         retrieval_for_disk_dataset(
             loaded_dataset,
             shard_names, # a list of retrieval database name
             output_path,
-            saved_dataset_root = "/cephfs/user/mikeeewang/summer_22/code/t-zero/retrieval_indexing/indexed_datasets",
-            saved_index_root = "/cephfs/user/mikeeewang/summer_22/code/t-zero/retrieval_indexing/output_indexing",
+            saved_dataset_root = "/cephfs/user/mikeeewang/summer_22/code/p3_retrieval_and_processing/retrieval_indexing/indexed_datasets",
+            saved_index_root = "/cephfs/user/mikeeewang/summer_22/code/p3_retrieval_and_processing/retrieval_indexing/output_indexing",
             device = torch.device("cuda:7"), # encoder device
             k = 20 # retrieval number
         )
@@ -215,9 +251,24 @@ def main():
                         #             break
                         if is_original:
                             if task_full_name==cand[3] and cand[5]==idx[i]:
-                                logger.info('skip identical instance!')
+                                # logger.info('skip identical instance!')
+                                pass
                             else:
                                 demonstration_pretokenized.append(cand[1].rstrip("\n") + "\n" + cand[2].lstrip("\n"))
+
+                                prompt_input_ids = encode_right_truncated_single(
+                                    tokenizer,
+                                    cand[1],
+                                    padding=False,
+                                    max_length=MAX_LENGTH,
+                                    add_special_tokens=False
+                                )
+                                prompt_target_ids = encode_right_truncated_single(
+                                    tokenizer,
+                                    cand[2],
+                                    padding=False,
+                                    max_length=MAX_LENGTH,
+                                )
                                 # store the chosen example
                                 chosen_examples_per_instance.append(
                                     {
@@ -226,7 +277,9 @@ def main():
                                         "targets_pretokenized":cand[2],
                                         "dataset_name":cand[3],
                                         "template_name":cand[4],
-                                        "idx":cand[5]
+                                        "idx":cand[5],
+                                        "inputs":prompt_input_ids,
+                                        "targets":prompt_target_ids
                                     }
                                 )
                     ex_i += 1
@@ -263,7 +316,8 @@ def main():
 
         examples['inputs'] = new_input_ids
         examples['inputs_pretokenized'] = new_inputs_pretokenized
-        # store the chosen examples
+
+        # tokenize and store the chosen examples
         examples['chosen_examples'] = chosen_examples
 
         for i in examples['inputs']:
@@ -272,7 +326,7 @@ def main():
 
         return examples
 
-    for p in tqdm(glob(os.path.join(intermeidate_dir, f"{task_full_name}*"))):
+    for p in tqdm(glob(os.path.join(intermediate_dir, f"{task_full_name}*"))):
         # process dataset
         raw_dataset = load_from_disk(p)
         # raw_train_dataset = raw_dataset['train']

@@ -92,7 +92,7 @@ def main():
     ### input config ###
     input_dir = "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_subset" # directory storing local dataset on disk
     shard_names = [args.shard_name] # one only
-    intermeidate_dir = f"/cephfs/user/mikeeewang/summer_22/code/t-zero/evaluation/retrieved_dataset_train_validation/{args.shard_name}" # storing dataset with retrieved examples
+    intermeidate_dir = f"/cephfs/user/mikeeewang/summer_22/code/p3_retrieval_and_processing/evaluation/retrieved_dataset_train_validation/{args.shard_name}" # storing dataset with retrieved examples
 
     dataset_name = args.dataset_name
     dataset_config_name = args.dataset_config_name
@@ -143,8 +143,8 @@ def main():
             loaded_dataset,
             shard_names, # a list of retrieval database name
             output_path,
-            saved_dataset_root = "/cephfs/user/mikeeewang/summer_22/code/t-zero/retrieval_indexing/indexed_datasets",
-            saved_index_root = "/cephfs/user/mikeeewang/summer_22/code/t-zero/retrieval_indexing/output_indexing",
+            saved_dataset_root = "/cephfs/user/mikeeewang/summer_22/code/p3_retrieval_and_processing/retrieval_indexing/indexed_datasets",
+            saved_index_root = "/cephfs/user/mikeeewang/summer_22/code/p3_retrieval_and_processing/retrieval_indexing/output_indexing",
             device = torch.device("cuda:7"), # encoder device
             k = 20 # retrieval number
         )

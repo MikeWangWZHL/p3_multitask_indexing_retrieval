@@ -141,7 +141,7 @@ def main():
 
     if not args.train:
         training_model_name = "mulcqa_mixture_template_augmented_6-12_n-2"
-        output_index_dir = f"/cephfs/user/mikeeewang/summer_22/code/t-zero/retrieval_indexing/output_indexing/{training_model_name}"
+        output_index_dir = f"/cephfs/user/mikeeewang/summer_22/code/p3_retrieval_and_processing/retrieval_indexing/output_indexing/{training_model_name}"
         dataset_mixture_config_path = f'/cephfs/user/mikeeewang/summer_22/code/MultitaskGenerativeMoE/output/p3_finetuning/with_template_augmented/t5-base/{training_model_name}/dataset_mixture_config.json'
         candidate_template_dict = get_training_used_templates(dataset_mixture_config_path, task_template_name_dict)
         os.makedirs(output_index_dir, exist_ok=True)

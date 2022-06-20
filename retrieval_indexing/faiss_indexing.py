@@ -41,42 +41,79 @@ def load_multitask_datasets(dataset_disk_paths):
     print("concatenated dataset:", concatenated)
     return concatenated
 
-def load_multitask_datasets_with_idx(picked_datasets_names, dataset_disk_root, task_2_templates = None):
+def get_task_template_name_from_path(p, task_full_name = None):
+    
+    if task_full_name is None:
+        task_name = os.path.basename(os.path.dirname(p))
+        dataset_name, dataset_config_name = task_name.split("__")[0],task_name.split("__")[1]
+
+        if dataset_config_name in ["None","none"]:
+            dataset_config_name = None
+        if dataset_config_name:
+            task_full_name = f'{dataset_name}_{dataset_config_name}'
+        else:
+            task_full_name = f'{dataset_name}'
+
+    template_name = os.path.basename(p).replace(f'{task_full_name}_', '').replace('_score_eval', '').strip('_')
+    if dataset_name == 'anli':
+        template_name = template_name.replace('_r1', '').replace('_r2', '').replace('_r3', '')
+    return task_full_name, template_name
+
+def load_multitask_datasets_with_idx(
+        picked_datasets_paths = None,
+        picked_datasets_names = None, 
+        dataset_disk_root = None, 
+        task_2_templates = None
+    ):
+
+    if picked_datasets_paths is None:
+        assert picked_datasets_names is not None
+        dataset_disk_paths = []
+        print(f'NOTE: using task_full_names, load from {dataset_disk_root}')
+        for dataset_name in tqdm(picked_datasets_names):
+            for p in glob(os.path.join(dataset_disk_root,f"{dataset_name}*")):
+                
+                if task_2_templates is not None:
+                    assert dataset_name in task_2_templates
+                    if 'original_dataset_name' not in task_2_templates[dataset_name]:
+                        print('!!! skip non-original:', dataset_name, os.path.basename(p))
+                        continue
+                    if os.path.basename(p) not in task_2_templates[dataset_name]['original_dataset_name']:
+                        print('!!! skip non-original:', dataset_name, os.path.basename(p))
+                        continue
+                dataset_disk_paths.append(p)
+    else:
+        print('NOTE: using specified paths...')
+        dataset_disk_paths = picked_datasets_paths
+    
+    print(dataset_disk_paths)
     datasets = []
-    dataset_disk_paths = []
-    print('loading datasets train split ...')
-    for dataset_name in tqdm(picked_datasets_names):
-        for p in glob(os.path.join(dataset_disk_root,f"{dataset_name}*")):
-            
-            if task_2_templates is not None:
-                assert dataset_name in task_2_templates
-                if 'original_dataset_name' not in task_2_templates[dataset_name]:
-                    print('!!! skip non-original:', dataset_name, os.path.basename(p))
-                    continue
-                if os.path.basename(p) not in task_2_templates[dataset_name]['original_dataset_name']:
-                    print('!!! skip non-original:', dataset_name, os.path.basename(p))
-                    continue
-            
-            dataset_disk_paths.append(p)
-            loaded_dataset = load_from_disk(p)
-            # template_name = os.path.basename(p).replace(dataset_name,'')
-            template_name = os.path.basename(p).removeprefix(dataset_name)
-            if "train" in loaded_dataset:
-                loaded_dataset_train_split = loaded_dataset['train']
-            else:
-                print(f'INFO: no train split found, using entire dataset: {p}')
-                loaded_dataset_train_split = loaded_dataset
-            
-            ### add dataset name ###
-            def add_instance_info_column(example, idx):
-                example['dataset_name'] = dataset_name
-                example['template_name'] = template_name
-                example['idx'] = idx
-                return example
-            loaded_dataset_train_split = loaded_dataset_train_split.map(add_instance_info_column, with_indices=True)
-            datasets.append(loaded_dataset_train_split)
-            # break
-        # break
+    for i in range(len(dataset_disk_paths)):
+        p = dataset_disk_paths[i]
+
+        if picked_datasets_names is not None:
+            task_full_name = picked_datasets_names[i]
+        else:
+            task_full_name = None
+        
+        task_full_name, template_name = get_task_template_name_from_path(p, task_full_name=task_full_name)
+        print(task_full_name, template_name)
+        loaded_dataset = load_from_disk(p)
+        if "train" in loaded_dataset:
+            loaded_dataset_train_split = loaded_dataset['train']
+        else:
+            print(f'INFO: no train split found, using entire dataset: {p}')
+            loaded_dataset_train_split = loaded_dataset
+        
+        ### add dataset name ###
+        def add_instance_info_column(example, idx):
+            example['dataset_name'] = task_full_name
+            example['template_name'] = template_name
+            example['idx'] = idx
+            return example
+        loaded_dataset_train_split = loaded_dataset_train_split.map(add_instance_info_column, with_indices=True)
+        datasets.append(loaded_dataset_train_split)
+
     concatenated = concatenate_datasets(datasets)
     print("concatenated dataset:", concatenated)
     return concatenated, dataset_disk_paths
@@ -84,16 +121,16 @@ def load_multitask_datasets_with_idx(picked_datasets_names, dataset_disk_root, t
 
 @torch.no_grad()
 def indexing(
-        picked_datasets_names,
         output_dir, 
         key_name,
+        picked_datasets_names = None,
+        picked_datasets_paths = None,
         if_batched = False,
         num_proc = 1,
         dataset_disk_root = "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_subset",
         saved_dataset_root = "/cephfs/user/mikeeewang/summer_22/code/t-zero/retrieval_indexing/indexed_datasets",
         device_index = 1,
         task_2_templates = json.load(open("/cephfs/user/mikeeewang/summer_22/workspace/data/bigscience_P3_task_2_templates.json"))
-        # dataset_disk_root = "/cephfs/user/jianyiyang/workspace/data/bigscience_P3"
     ):
     
     ### output dir
@@ -109,13 +146,25 @@ def indexing(
     ctx_encoder.to(device)
 
     ### load dataset
-    print('picked datasets number:', len(picked_datasets_names))
+    if picked_datasets_names:
+        print('picked datasets number:', len(picked_datasets_names))
+    elif picked_datasets_paths:
+        print('picked datasets paths:', len(picked_datasets_paths))
+    else:
+        raise ValueError('One of \'picked_datasets_names\' or \'picked_datasets_paths\' need to be specified!')
+
     # dataset_disk_paths = []
     # for d in picked_datasets_names:
     #     dataset_disk_paths += glob(os.path.join(dataset_disk_root,f"{d}*"))
     # ds = load_multitask_datasets(dataset_disk_paths)
 
-    ds, dataset_disk_paths = load_multitask_datasets_with_idx(picked_datasets_names, dataset_disk_root, task_2_templates) 
+    ds, dataset_disk_paths = load_multitask_datasets_with_idx(
+        picked_datasets_paths = picked_datasets_paths,
+        picked_datasets_names = picked_datasets_names, 
+        dataset_disk_root = dataset_disk_root, 
+        task_2_templates = task_2_templates
+    ) 
+
     shard_path = os.path.join(saved_dataset_root, os.path.basename(output_dir))
     ds.save_to_disk(shard_path)
     print('saved to disk')
@@ -257,21 +306,44 @@ if __name__ == "__main__":
     # ]
 
     ## subset 4
-    output_dir = './output_indexing/p3_subset_6_6_multichoice_qa_new_tmp'
-    # multi-choice qa training set in t-zero
-    picked_datasets_names = [
-        "cos_e_v1.11", 
-        "cosmos_qa", 
-        "dream", 
-        "qasc", 
-        "quail", 
-        "quarel",
-        "quartz", 
-        "sciq", 
-        "social_i_qa",
-        "wiki_hop_original",
-        "wiki_qa"
+    # output_dir = './output_indexing/p3_subset_6_6_multichoice_qa_new_tmp'
+    # # multi-choice qa training set in t-zero
+    # picked_datasets_names = [
+    #     "cos_e_v1.11", 
+    #     "cosmos_qa", 
+    #     "dream", 
+    #     "qasc", 
+    #     "quail", 
+    #     "quarel",
+    #     "quartz", 
+    #     "sciq", 
+    #     "social_i_qa",
+    #     "wiki_hop_original",
+    #     "wiki_qa"
+    # ]
+
+
+    ## multitask qa N=2 subset
+    output_dir = './output_indexing/p3_subset_6_6_multichoice_qa_N-2_subset'
+    picked_datasets_paths = [
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/cos_e__v1.11__p3_subset__k-0/cos_e_v1.11_question_option_description_text",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/cos_e__v1.11__p3_subset__k-0/cos_e_v1.11_description_question_option_id",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/cosmos_qa__none__p3_subset__k-0/cosmos_qa_context_description_question_answer_id",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/cosmos_qa__none__p3_subset__k-0/cosmos_qa_context_question_description_answer_text",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/dream__none__p3_subset__k-0/dream_baseline",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/dream__none__p3_subset__k-0/dream_read_the_following_conversation_and_answer_the_question",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/qasc__none__p3_subset__k-0/qasc_qa_with_separated_facts_2",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/qasc__none__p3_subset__k-0/qasc_qa_with_separated_facts_1",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/quartz__none__p3_subset__k-0/quartz_answer_question_below",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/quartz__none__p3_subset__k-0/quartz_paragraph_question_plain_concat",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/sciq__none__p3_subset__k-0/sciq_Multiple_Choice_Question_First",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/sciq__none__p3_subset__k-0/sciq_Direct_Question",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/social_i_qa__none__p3_subset__k-0/social_i_qa_Check_if_a_random_answer_is_valid_or_not",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/social_i_qa__none__p3_subset__k-0/social_i_qa_Show_choices_and_generate_index",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/wiqa__none__p3_subset__k-0/wiqa_effect_with_label_answer",
+        "/cephfs/user/mikeeewang/summer_22/workspace/data/p3_finetuning/max_length_974/wiqa__none__p3_subset__k-0/wiqa_effect_with_string_answer"
     ]
+
 
     ### if not None, use original tasks only:
     task_2_templates = None
@@ -281,9 +353,10 @@ if __name__ == "__main__":
     key_name = "inputs_pretokenized"
     
     indexing(
-        picked_datasets_names,
         output_dir, 
         key_name,
+        picked_datasets_paths = picked_datasets_paths,
+        picked_datasets_names = None,
         if_batched = False,
         num_proc = None,
         device_index = device_index,
